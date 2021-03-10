@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
+
+    <title>site-calendar-events test</title>
+
+    <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
+    <script src="../../web-component-tester/browser.js"></script>
+
+    <link rel="import" href="../site-calendar-events.html">
+  </head>
+  <body>
+    <test-fixture id="basic">
+      <template>
+        <site-calendar-events
+         location-api="https://test-brilliant-apps-hub-metadata-temp.run.aws-usw02-pr.ice.predix.io/api/v2/locations"
+         event-api="https://site-calendar-api-test.run.aws-usw02-pr.ice.predix.io/api/v1">
+        </site-calendar-events>
+      </template>
+    </test-fixture>
+
+    <script src="mock-data/events.js"></script>
+    <script src="mock-data/locations.js"></script>
+    <script src="mock-data/clicks.js"></script>
+    <script>
+
+      describe('instantiating', function () {
+        it('should instantiate without errors', function() {
+          var element = fixture('basic');
+          assert.equal(element.is, 'site-calendar-events');
+        });
+      });
+
+      describe('_siteIdChanged() unit tests', function () {
+
+        var element = fixture('basic');
+        var _populateEventTable_stub = sinon.stub(element, '_populateEventTable');
+        var _fetchSiteLocations_stub = sinon.stub(element, '_fetchSiteLocations');
+
+        afterEach(function() {
+          _populateEventTable_stub.reset();
+          _fetchSiteLocations_stub.reset();
+        });
+
+        function expectForGoodInputs(id){
+          element._siteIdChanged(id);
+          expect(_populateEventTable_stub).to.have.been.called;
+          expect(_fetchSiteLocations_stub).to.have.been.called;
+          assert.equal(element.$.spinner.style.visibility,'visible');
+        }
+
+        function expectForBadInputs(id){
+          expect(_populateEventTable_stub).to.have.not.been.called;
+          expect(_fetchSiteLocations_stub).to.have.not.been.called;
+        }
+
+        it('should call _populateEventTable and _fetchSiteLocations for a good siteId', function() {
+          expectForGoodInputs('123');
+        });
+
+        it('should not call fetching functions if siteId is an empty string', function() {
+          expectForBadInputs('');
+        });
+
+        it('should not call fetching functions if siteId is null', function() {
+          expectForBadInputs(null);
+        });
+        it('should not call fetching functions if siteId is the bound variable literal', function() {
+          expectForBadInputs('{{selectedSite.siteId}}');
+        });
+
+      });
+
+      describe('_populateEventTable() unit tests ', function () {
+        var element = fixture('basic');
+        var xhr;
+        var requests;
+        var alertMessagestub = sinon.stub(element, '_createAlertMessage');
+        var eventError = 'Failed to retrieve event information. ' +
+        'Please contact your system administrator.';
+        var locationError = 'Failed to retrieve location information. ' +
+        'Please contact your system administrator.';
+
+        beforeEach(function () {
+          xhr = sinon.useFakeXMLHttpRequest();
+          requests = [];
+          xhr.onCreate = function(xhr) {
+            requests.push(xhr);
+          };
+        });
+
+        afterEach(function() {
+          xhr.restore();
+          alertMessagestub.reset();
+        });
+
+        function respond(request,code,response){
+          request.respond(code, {'Content-Type': 'application/json'}
+          , JSON.stringify(response));
+        };
+
+        it('should assign element.data if the event and location services dont fail'
+        , function(done){
+          promises = element._populateEventTable('123');
+          respond(requests[0],200,goodEventResponse);
+          promises[0].then(function() {
+            respond(requests[1],200,goodLocationResponse);
+            promises[1].then(function(result) {
+              flush(function() {
+                assert.isOk(element.data);
+                assert.equal(element.$.spinner.style.visibility,'hidden');
+                done();
+              });
+            });
+          });
+        });
+
+        it('should call the error user alert function if the event service fails'
+        , function(done){
+          promises = element._populateEventTable('123');
+          requests[0].respond(500);
+          promises[0].catch(function(e) {
+            flush(function() {
+              expect(alertMessagestub).to.have.been.calledWith('important','Error'
+              ,eventError,15000);
+              assert.equal(element.$.spinner.style.visibility,'hidden');
+              done();
+            });
+          });
+        });
+
+        it('should call the error user alert function if the location service fails'
+        , function(done){
+          promises = element._populateEventTable('123');
+          respond(requests[0],200,goodEventResponse);
+          promises[0].then(function() {
+            requests[1].respond(500);
+            promises[1].catch(function() {
+              flush(function() {
+                expect(alertMessagestub).to.have.been.calledWith('important','Error'
+                ,locationError,15000);
+                assert.equal(element.$.spinner.style.visibility,'hidden');
+                done();
+              });
+            });
+          });
+        });
+
+      });
+
+      describe('_fetchSiteLocations() unit tests', function(){
+        var element = fixture('basic');
+        var xhr;
+        var requests;
+
+        beforeEach(function () {
+          xhr = sinon.useFakeXMLHttpRequest();
+          requests = [];
+          xhr.onCreate = function(xhr) {
+            requests.push(xhr);
+          };
+        });
+
+        afterEach(function() {
+          xhr.restore();
+        });
+
+        function respond(request,code,response){
+          request.respond(code, {'Content-Type': 'application/json'}
+          , JSON.stringify(response));
+        };
+
+        it('should assign the proper value to element.siteLocations if the query was succesfull'
+        , function(done){
+          promise = element._fetchSiteLocations('123');
+          respond(requests[0],200,goodSiteLocationsResponse);
+          promise.then(function() {
+            flush(function() {
+              assert.isOk(element.siteLocations);
+              var expectedVal = [
+                {key: '00d1c7bf-3909-4e1b-a45c-48f152965e60', val: 'twenty sixth room'}
+              , {key: '0131784f-a3cd-404b-816a-e4bef47d7f76', val: 'thirty second room'}
+              ];
+              assert.deepEqual(element.siteLocations,expectedVal);
+              done();
+            });
+          });
+        });
+      });
+
+      describe('_modalSubmitted() unit tests', function(){
+        var element = fixture('basic');
+        var _addEvent_stub = sinon.stub(element, '_addEvent');
+        var _editEvent_stub = sinon.stub(element, '_editEvent');
+
+        afterEach(function() {
+          _addEvent_stub.reset();
+          _editEvent_stub.reset();
+        });
+
+        it('should call _addEvent with the proper arguments'
+        , function(){
+          /* set values that would be provided in the modal by the user */
+          //element.$.selectedLocationIds = ['0131784f-a3cd-404b-816a-e4bef47d7f76'],
+          element.$.eventName.value = 'Test Event 1';
+          element.$.eventDescr.value = 'Test description 1';
+          element.siteId = '4b9213de-75a4-49d2-9b31-77124fe84bdc';
+          element.$.eventLocations = { selectedValues : ['thirty second room']};
+          element.$.toFrom = { range:
+            {
+              from: "2018-02-21T20:53:16.260Z",
+              to: "2018-02-28T20:53:16.261Z"
+            }
+          };
+
+          element._modalSubmitted(element);
+          /* expected locations is wrong here, but will be tested properly in edit */
+          var expectedBody = {
+            locations: ['thirty second room'],
+            name: 'Test Event 1',
+            description: 'Test description 1',
+            startTime: '2018-02-21T20:53:16.260Z',
+            endTime: '2018-02-28T20:53:16.261Z',
+            eventId: 0,
+            modificationType: 'add',
+            siteId: '4b9213de-75a4-49d2-9b31-77124fe84bdc'
+          }
+
+          assert.deepEqual(_addEvent_stub.firstCall.args[0],["thirty second room"]);
+          /* deep equal wouldnt work so stringified the body */
+          assert.equal(JSON.stringify(_addEvent_stub.firstCall.args[1]),JSON.stringify(expectedBody));
+          assert.equal(element.$.spinner.style.visibility,'visible');
+        });
+
+        it('should call _editEvent with the proper arguments'
+        , function(){
+          /* set values that would be provided in the modal by the user */
+          //element.$.selectedLocationIds = ['0131784f-a3cd-404b-816a-e4bef47d7f76'],
+          element.modalHeader = 'Edit Event';
+          element.eventId = 123;
+          element.$.eventName.value = 'Test Event 1';
+          element.$.eventDescr.value = 'Test description 1';
+          element.siteId = '4b9213de-75a4-49d2-9b31-77124fe84bdc';
+          element.$.eventLocations = { selectedValues : ['0131784f-a3cd-404b-816a-e4bef47d7f76']};
+          element.$.toFrom = { range:
+            {
+              from: "2018-02-21T20:53:16.260Z",
+              to: "2018-02-28T20:53:16.261Z"
+            }
+          };
+
+          element._modalSubmitted(element);
+          /* expected locations is wrong here, but will be tested properly in edit */
+          var expectedBody = {
+            locations: ['0131784f-a3cd-404b-816a-e4bef47d7f76'],
+            name: 'Test Event 1',
+            description: 'Test description 1',
+            startTime: '2018-02-21T20:53:16.260Z',
+            endTime: '2018-02-28T20:53:16.261Z',
+            eventId: 123,
+            modificationType: 'add',
+            siteId: '4b9213de-75a4-49d2-9b31-77124fe84bdc'
+          }
+
+          /* deep equal wouldnt work so stringified the body */
+          assert.equal(JSON.stringify(_editEvent_stub.firstCall.args[0]),JSON.stringify(expectedBody));
+        });
+      });
+
+      describe('_addEvent() unit tests', function(){
+        var element = fixture('basic');
+        var xhr;
+        var requests;
+        var alertMessagestub = sinon.stub(element, '_createAlertMessage');
+        var _clearModal_stub = sinon.stub(element, '_clearModal');
+        var eventError = 'Error adding the event. Please try again in a few minutes';
+
+        beforeEach(function () {
+          xhr = sinon.useFakeXMLHttpRequest();
+          requests = [];
+          xhr.onCreate = function(xhr) {
+            requests.push(xhr);
+          };
+        });
+
+        afterEach(function() {
+            xhr.restore();
+            alertMessagestub.reset();
+            _clearModal_stub.reset();
+        });
+
+        function respond(request,code,response){
+          request.respond(code, {'Content-Type': 'application/json'}
+          , JSON.stringify(response));
+        };
+
+        it('should add a new event row to the data attribute that matches the db entry'
+        , function(done){
+          promise = element._addEvent(['Chicago HQ','Waukesha HQ'],goodEventPostPayload);
+          respond(requests[0],200,goodEventPostResponse);
+          promise.then(function() {
+            flush(function() {
+              assert.isOk(element.data);
+              assert.deepEqual(element.data[0],goodRowZeroAfterPost);
+              assert.equal(element.$.spinner.style.visibility,'hidden');
+              expect(_clearModal_stub).to.have.been.called;
+              done();
+            });
+          });
+        });
+
+        it ('should call the error user alert function if the event service fails'
+        , function(done){
+          promise = element._addEvent([],{});
+          respond(requests[0],400,{});
+          promise.catch(function() {
+            flush(function() {
+              expect(alertMessagestub).to.have.been.calledWith('important','Error'
+              ,eventError,15000);
+              assert.equal(element.$.spinner.style.visibility,'hidden');
+              expect(_clearModal_stub).to.have.not.been.called;
+              done();
+            });
+          });
+        });
+      });
+
+      describe('_editEvent() unit tests', function(){
+        var element = fixture('basic');
+        var xhr;
+        var requests;
+        var alertMessagestub = sinon.stub(element, '_createAlertMessage');
+        var _clearModal_stub = sinon.stub(element, '_clearModal');
+        var _populateEventTable_stub = sinon.stub(element, '_populateEventTable');
+        var eventError = 'Error updating the event. Please try again in a few minutes';
+
+        beforeEach(function () {
+          xhr = sinon.useFakeXMLHttpRequest();
+          requests = [];
+          xhr.onCreate = function(xhr) {
+            requests.push(xhr);
+          };
+        });
+
+        afterEach(function() {
+            xhr.restore();
+            alertMessagestub.reset();
+            _clearModal_stub.reset();
+            _populateEventTable_stub.reset();
+        });
+
+        function respond(request,code,response){
+          request.respond(code, {'Content-Type': 'application/json'}
+          , JSON.stringify(response));
+        };
+
+        it('should add a new event row to the data attribute that matches the db entry'
+        , function(done){
+          promise = element._editEvent(goodEventPutPayload);
+          respond(requests[0],200,goodEventPutResponse);
+          promise.then(function() {
+            flush(function() {
+              assert.isOk(element.data);
+              assert.equal(element.$.spinner.style.visibility,'hidden');
+              expect(_clearModal_stub).to.have.been.called;
+              expect(_populateEventTable_stub).to.have.been.called;
+              done();
+            });
+          });
+        });
+
+        it ('should call the error user alert function if the event service fails'
+        , function(done){
+          promise = element._editEvent([],{});
+          respond(requests[0],400,{});
+          promise.catch(function() {
+            flush(function() {
+              expect(alertMessagestub).to.have.been.calledWith('important','Error'
+              ,eventError,15000);
+              assert.equal(element.$.spinner.style.visibility,'hidden');
+              expect(_clearModal_stub).to.have.not.been.called;
+              expect(_populateEventTable_stub).to.have.not.been.called;
+              done();
+            });
+          });
+        });
+      });
+
+      describe('helper functions for populating event data table', function(){
+        var element = fixture('basic');
+        /* use stringify and parse to copy event data object instead of referencing it */
+        var data = JSON.parse(JSON.stringify(goodEventData));
+        var postDecorate = JSON.parse(JSON.stringify(goodPostDecorateEventData));
+        var err = {};
+
+        /* decorate table data */
+        it('should sort, format dates, and add icons to the event data', function(){
+          element._decorateTableData(data);
+          assert.deepEqual(data,goodPostDecorateEventDataInOrder);
+        });
+
+        /* prepare location request */
+        it('should create a location info object', function(){
+          var info = element._buildLocationInfo(data);
+          assert.deepEqual(info, goodLocationInfo);
+        });
+
+        /* handle locations */
+        it('should populate location names into the table data location column', function(){
+          element._handleLocations(goodLocationResponse,goodLocationInfo,postDecorate);
+          assert.deepEqual(postDecorate,goodPostLocationFetchEventData);
+        });
+
+        it('should return an error if location data is missing', function(){
+          err = element._handleLocations(badLocationDataMissing,{},{});
+          assert.equal(err.message,'Location data curropted or empty');
+        });
+
+        it('should return an error if location data is empty', function(){
+          err = element._handleLocations(badLocationDataEmpty,{},{});
+          assert.equal(err.message,'Location data curropted or empty');
+        });
+
+      });
+
+      describe('_createAlertMessage() unit tests', function(){
+        var element = fixture('basic');
+        it('should create a px alert', function(){
+          element._createAlertMessage('important','Test Error','This is a test',15000);
+          assert.equal(element.$.alertMessageContainer.lastChild.messageTitle,'Test Error');
+        });
+      });
+
+      describe('_clickEvent() unit tests', function(){
+        var element = fixture('basic');
+        var _editIconClicked_stub = sinon.stub(element, '_editIconClicked');
+        var _deleteIconClicked_stub = sinon.stub(element, '_deleteIconClicked');
+
+        afterEach(function() {
+          _editIconClicked_stub.reset();
+          _deleteIconClicked_stub.reset();
+        });
+
+        it('should call edit event function for row 0', function(){
+          element._clickEvent(editIconClickEvent,element);
+          expect(_editIconClicked_stub).to.have.been.calledWith('0');
+        });
+
+        it('should call delete event function for row 1', function(){
+          element._clickEvent(deleteIconClickEvent,element);
+          expect(_deleteIconClicked_stub).to.have.been.calledWith('1');
+        });
+
+        it('should not call edit or delete functions for a click outside the icons'
+        , function(){
+          element._clickEvent(regularClickEvent,element);
+          expect(_deleteIconClicked_stub).to.have.not.been.called;
+          expect(_editIconClicked_stub).to.have.not.been.called;
+        });
+
+      });
+
+      describe('_editIconClicked() unit tests', function(){
+        var element = fixture('basic');
+        element.data = goodPostLocationFetchEventData;
+        element.$.eventLocations.items = goodLocationDropDownData;
+
+        it('should populate modal attributes with the correct event data'
+        , function(){
+          element._editIconClicked(0);
+          assert.equal(element.modalHeader,'Edit Event');
+          assert.equal(element.$.eventName.value, 'Test Event 3');
+          assert.equal(element.$.eventDescr.value, 'Test Event 3');
+          assert.equal(element.eventId,3);
+          assert.equal(element.$.toFrom.range.from,'1970-01-01T01:43:00-06:00');
+          assert.equal(element.$.toFrom.range.to,'1970-01-01T01:43:00-06:00');
+          assert.deepEqual(element.$.eventLocations.items,goodLocationDropDownDataEditing);
+        });
+      });
+
+      describe('_deleteIconClicked() unit tests', function(){
+        var element = fixture('basic');
+        var xhr;
+        var requests;
+        var _createAlertMessage_stub = sinon.stub(element, '_createAlertMessage');
+        var _populateEventTable_stub = sinon.stub(element, '_populateEventTable');
+        var eventError = 'Error deleting the event. Please try again in a few minutes';
+        element.data = goodPostLocationFetchEventData;
+
+        beforeEach(function () {
+          xhr = sinon.useFakeXMLHttpRequest();
+          requests = [];
+          xhr.onCreate = function(xhr) {
+            requests.push(xhr);
+          };
+        });
+
+        afterEach(function() {
+          xhr.restore();
+          _createAlertMessage_stub.reset();
+          _populateEventTable_stub.reset();
+        });
+
+        function respond(request,code,response){
+          request.respond(code, {'Content-Type': 'application/json'}
+          , JSON.stringify(response));
+        };
+
+        it('should call _populateEventTable after successful delete'
+        , function(done){
+          promise = element._deleteIconClicked(1);
+          respond(requests[0],200,{});
+          promise.then(function() {
+            flush(function() {
+              expect(_populateEventTable_stub).to.have.been.called;
+              expect(_createAlertMessage_stub).to.have.not.been.called;
+              assert.equal(element.$.spinner.style.visibility,'visible');
+              done();
+            });
+          });
+        });
+
+        it('should call _createAlertMessage with the proper error message'
+        , function(done){
+          promise = element._deleteIconClicked(1);
+          respond(requests[0],400,{});
+          promise.catch(function() {
+            flush(function() {
+              expect(_populateEventTable_stub).to.have.not.been.called;
+              expect(_createAlertMessage_stub).to.have.been.calledWith('important'
+              ,'Error',eventError,15000);;
+              assert.equal(element.$.spinner.style.visibility,'hidden');
+              done();
+            });
+          });
+        });
+      });
+
+
+    </script>
+  </body>
+</html>

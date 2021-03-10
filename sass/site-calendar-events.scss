@@ -1,0 +1,64 @@
+$inuit-enable-margins--huge: true;
+$inuit-enable-margins--small: true;
+$inuit-enable-margins: true;
+$inuit-enable-paddings--large: true;
+
+$inuit-enable-btn--primary : true;
+
+$inuit-enable-input--regular : true;
+
+@import "px-colors-design/_settings.colors.scss";
+@import 'px-spacing-design/_trumps.spacing.scss';
+@import 'px-buttons-design/_objects.buttons.scss';
+@import 'px-flexbox-design/_base.flexbox.scss';
+@import "px-headings-design/_base.headings.scss";
+
+@import 'px-forms-design/_base.forms.scss';
+
+
+.demo {
+  color: lightgray;
+}
+
+:host {
+  --iron-icon-stroke-color:$select-blue-default;
+}
+
+px-data-table::shadow px-data-table-cell{
+  padding-top:12px !important;
+  padding-left:10px !important;
+  padding-right:10px !important;
+}
+
+px-data-table::shadow px-icon{
+  cursor:pointer;
+}
+
+px-data-table::shadow .edit-icon{
+  @extend .u-ml\00002b\00002b;
+  @extend .u-mr-;
+}
+
+px-data-table::shadow .delete-icon{
+  @extend .u-mr\00002b\00002b;
+}
+
+px-modal::shadow section {
+  overflow:visible !important;
+}
+
+#modalHeader {
+  margin-top: -15px;
+}
+
+#eventDescr {
+  width:280px;
+}
+
+#eventLocations {
+  width: 300px;
+}
+
+#spinner {
+  visibility:hidden;
+}
